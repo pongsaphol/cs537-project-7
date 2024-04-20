@@ -91,7 +91,11 @@ int main(int argc, char* argv[]) {
       for (int j = 0; j < N_BLOCKS; j++) {
         printf("Inode block %d: %ld\n", j, inode->blocks[j]);
       }
-      printf("--------------------\n");
+      // char* now = (char*)inode;
+      // for (int i = 0; i < 512; ++i) {
+      //   printf("%02x ", (int)now[i]);
+      // }
+      printf("\n--------------------\n");
     }
   }
   printf("\n-----------END SECOND PART---------\n\n");
@@ -100,11 +104,19 @@ int main(int argc, char* argv[]) {
       d_bitmap++;
     } 
     if ((*d_bitmap >> (i % 8)) & 1) {
-      printf("Data block %ld is allocated\n", i * BLOCK_SIZE + sb->d_blocks_ptr);
+      printf("Data block %ld is allocated %lx\n", i * BLOCK_SIZE + sb->d_blocks_ptr, i * BLOCK_SIZE + sb->d_blocks_ptr);
       struct wfs_dentry* dentry = (struct wfs_dentry*)(mem + sb->d_blocks_ptr + i * BLOCK_SIZE);
       printf("Dentry name: %s\n", dentry->name);
       printf("Dentry num: %d\n", dentry->num);
-
+      char* now = (char*)dentry;
+      for (int i = 0; i < 512; ++i) {
+        printf("%02x ", (int)now[i]);
+      }
+      printf("\n");
+      // for (int j = 0; j < dentry->num; ++j) {
+      //   off_t* inode_ptr = (off_t*)(mem + sb->d_blocks_ptr + i * BLOCK_SIZE + sizeof(struct wfs_dentry) + j * sizeof(off_t));
+      //   printf("Inode ptr: %d %ld\n", j, *inode_ptr);
+      // }
     }
   }
 }
