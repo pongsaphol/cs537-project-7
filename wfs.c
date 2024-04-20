@@ -83,12 +83,48 @@ static int wfs_mkdir(const char* path, mode_t mode) {
   return 0;
 }
 
+int wfs_rmdir(const char* path) {
+  char* path_copy = strdup(path);
+  char** tokens = parse_path(path_copy);
+  int last = -1;
+  while (tokens[last + 1] != NULL) {
+    last++;
+  }
+  if (last == -1) {
+    return -ENOENT;
+  }
+  char* name = tokens[last];
+  tokens[last] = NULL;
+
+  struct wfs_inode* inodes = get_inode_content(get_inode_rec(tokens, 0));
+  struct wfs_inode* del_inode = get_inode_content(get_inode(path));
+  if (!(del_inode->mode & S_IFDIR)) {
+    return -ENOTDIR;
+  }
+  if (del_inode->size != 0) {
+    return -ENOTEMPTY;
+  }
+  for (int i = 0; i < D_BLOCK; ++i) {
+    if (inodes->blocks[i] == 0) {
+      continue;
+    }
+    struct wfs_dentry* entry = get_dentry(inodes->blocks[i]);
+    if (strcmp(entry->name, name) == 0) {
+      free_block(inodes->blocks[i]);
+      inodes->blocks[i] = 0;
+      inodes->size -= BLOCK_SIZE;
+      return 0;
+    }
+  }
+  return 1;
+}
+
 static struct fuse_operations ops = {
   .getattr = wfs_getattr,
   // .mknod   = wfs_mknod,
   .mkdir   = wfs_mkdir,
   // .unlink  = wfs_unlink,
-  // .rmdir   = wfs_rmdir,
+  .rmdir   = wfs_rmdir,
   // .read    = wfs_read,
   // .write   = wfs_write,
   // .readdir = wfs_readdir,

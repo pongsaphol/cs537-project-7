@@ -190,3 +190,14 @@ char* get_dblock_content(int dblock) {
   return mem + dblock;
 }
 
+void free_block(int dblock) {
+  struct wfs_dentry* entry = get_dentry(dblock);
+  memset(entry, 0, BLOCK_SIZE);
+  int idx = (dblock - sb->d_blocks_ptr) / BLOCK_SIZE;
+  char* d_bitmap = mem + sb->d_bitmap_ptr;
+  while (idx > 8) {
+    d_bitmap++;
+    idx -= 8;
+  }
+  *d_bitmap &= ~(1 << idx);
+}
