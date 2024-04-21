@@ -18,8 +18,21 @@ extern char* mem;
 extern struct wfs_sb* sb;
 
 void print_inode_stat(struct wfs_inode* inode) {
+  printf("--------------------\n");
   printf("num: %d\n", inode->num);
   printf("mode: %d\n", inode->mode);
+  printf("Permission: ");
+  printf((inode->mode & S_IFDIR) ? "d" : "-");
+  printf((inode->mode & S_IRUSR) ? "r" : "-");
+  printf((inode->mode & S_IWUSR) ? "w" : "-");
+  printf((inode->mode & S_IXUSR) ? "x" : "-");
+  printf((inode->mode & S_IRGRP) ? "r" : "-");
+  printf((inode->mode & S_IWGRP) ? "w" : "-");
+  printf((inode->mode & S_IXGRP) ? "x" : "-");
+  printf((inode->mode & S_IROTH) ? "r" : "-");
+  printf((inode->mode & S_IWOTH) ? "w" : "-");
+  printf((inode->mode & S_IXOTH) ? "x" : "-");
+  printf("\n");
   printf("uid: %d\n", inode->uid);
   printf("gid: %d\n", inode->gid);
   printf("size: %ld\n", inode->size);
@@ -30,6 +43,7 @@ void print_inode_stat(struct wfs_inode* inode) {
   for (int i = 0; i < N_BLOCKS; i++) {
     printf("block %d: %ld\n", i, inode->blocks[i]);
   }
+  printf("--------------------\n");
 }
 
 void init_mem(char* file, int reset) {
@@ -78,7 +92,7 @@ int get_inode_rec(char** path, int inode) {
   }
   struct wfs_inode* inodes = (struct wfs_inode*)(mem + sb->i_blocks_ptr + inode * BLOCK_SIZE);
   if (inodes->mode & S_IFDIR) {
-    for (int i = 0; i < D_BLOCK; i++) {
+    for (int i = 0; i <= D_BLOCK; i++) {
       if (inodes->blocks[i] != 0) {
         struct wfs_dentry* dentry = get_dentry(inodes->blocks[i]);
         if (strcmp(dentry->name, path[0]) == 0) {
@@ -200,4 +214,85 @@ void free_block(int dblock) {
     idx -= 8;
   }
   *d_bitmap &= ~(1 << idx);
+}
+
+void free_inode(struct wfs_inode* inode) {
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if (inode->blocks[i] != 0) {
+      free_block(inode->blocks[i]);
+    }
+  }
+  if (inode->blocks[IND_BLOCK] != 0) {
+    int* ind_block = (int*)get_dblock_content(inode->blocks[IND_BLOCK]);
+    for (int i = 0; i < BLOCK_SIZE / sizeof(int); i++) {
+      if (ind_block[i] != 0) {
+        free_block(ind_block[i]);
+      }
+    }
+    free_block(inode->blocks[IND_BLOCK]);
+  }
+  int idx = inode->num;
+  char* i_bitmap = mem + sb->i_bitmap_ptr;
+  while (idx > 8) {
+    i_bitmap++;
+    idx -= 8;
+  }
+  *i_bitmap &= ~(1 << idx);
+}
+
+char get_byte_from_inode(struct wfs_inode* inode, int pos) {
+  int block = pos / BLOCK_SIZE;
+  int offset = pos % BLOCK_SIZE;
+  if (block <= D_BLOCK) {
+    char* content = get_dblock_content(inode->blocks[block]);
+    printf("read ptr: %p %c\n", content + offset, content[offset]);
+    return content[offset];
+  } else {
+    int* ind_block = (int*)get_dblock_content(inode->blocks[IND_BLOCK]);
+    block -= D_BLOCK + 1;
+    int idx = ind_block[block];
+    char* content = get_dblock_content(idx);
+    return content[offset];
+  }
+}
+
+int set_byte_to_inode(struct wfs_inode* inode, int pos, char byte) {
+  int block = pos / BLOCK_SIZE;
+  int offset = pos % BLOCK_SIZE;
+  if (block <= D_BLOCK) {
+    if (inode->blocks[block] == 0) {
+      int new_block = get_new_dblock();
+      if (new_block < 0) {
+        return new_block;
+      }
+      inode->blocks[block] = new_block; 
+    }
+    char* content = get_dblock_content(inode->blocks[block]);
+    content[offset] = byte;
+    printf("write ptr: %p %c\n", content + offset, content[offset]);
+  } else {
+    if (inode->blocks[IND_BLOCK] == 0) {
+      int new_block = get_new_dblock();
+      if (new_block < 0) {
+        return new_block;
+      }
+      inode->blocks[IND_BLOCK] = new_block;
+      char* ind_block = get_dblock_content(inode->blocks[IND_BLOCK]);
+      memset(ind_block, 0, BLOCK_SIZE);
+    }
+    int* ind_block = (int*)get_dblock_content(inode->blocks[IND_BLOCK]);
+    block -= D_BLOCK + 1;
+    int idx = ind_block[block];
+    if (idx == 0) {
+      int new_block = get_new_dblock();
+      if (new_block < 0) {
+        return new_block;
+      }
+      idx = new_block;
+      ind_block[block] = idx;
+    }
+    char* content = get_dblock_content(idx);
+    content[offset] = byte;
+  }
+  return 0;
 }

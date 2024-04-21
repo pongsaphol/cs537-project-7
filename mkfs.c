@@ -37,6 +37,7 @@ int main(int argc, char* argv[]) {
 		return -1;
   init_mem(disk, 1);
 
+  inode = ((inode + 31) >> 5) << 5;
   block = ((block + 31) >> 5) << 5;
 
   int inode_bit_count = 0;
