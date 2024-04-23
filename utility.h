@@ -107,6 +107,10 @@ int get_inode_rec(char** path, int inode) {
   }
   struct wfs_inode* inodes = (struct wfs_inode*)(mem + sb->i_blocks_ptr + inode * BLOCK_SIZE);
   if (inodes->mode & S_IFDIR) {
+    if (strcmp(path[0], ".") == 0) {
+      return get_inode_rec(path + 1, inode);
+    }
+    
     struct wfs_dentry* entry;
     if (get_dentry_from_inode(inodes, path[0], &entry) == 0) {
       return get_inode_rec(path + 1, entry->num);
