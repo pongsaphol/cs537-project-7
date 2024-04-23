@@ -110,7 +110,7 @@ int get_inode_rec(char** path, int inode) {
     if (strcmp(path[0], ".") == 0) {
       return get_inode_rec(path + 1, inode);
     }
-    
+
     struct wfs_dentry* entry;
     if (get_dentry_from_inode(inodes, path[0], &entry) == 0) {
       return get_inode_rec(path + 1, entry->num);
@@ -134,7 +134,7 @@ int check_inode_bitmap(int inode) {
     return -ENOSPC;
   }
   char* i_bitmap = mem + sb->i_bitmap_ptr;
-  while (inode > 8) {
+  while (inode >= 8) {
     i_bitmap++;
     inode -= 8;
   }
@@ -157,18 +157,20 @@ struct wfs_inode* get_inode_content(int inode) {
 
 int get_new_inode() {
   int inode = get_addr_new_inode();
+  printf("NEW ADDR inode: %d\n", inode);
   if (inode < 0) {
     return inode;
   }
+  int inode_ori = inode;
   char* i_bitmap = mem + sb->i_bitmap_ptr;
-  while (inode > 8) {
+  while (inode >= 8) {
     i_bitmap++;
     inode -= 8;
   }
   *i_bitmap |= 1 << inode;
 
-  struct wfs_inode* inode_c = get_inode_content(inode);
-  inode_c->num = inode;
+  struct wfs_inode* inode_c = get_inode_content(inode_ori);
+  inode_c->num = inode_ori;
   inode_c->uid = getuid();
   inode_c->gid = getgid();
   inode_c->size = 0;
@@ -176,7 +178,7 @@ int get_new_inode() {
   time_t now = time(NULL);
   inode_c->atim = inode_c->mtim = inode_c->ctim = now;
 
-  return inode;
+  return inode_ori;
 }
 
 
@@ -185,7 +187,7 @@ int check_dblock_bitmap(int dblock) {
     return -ENOSPC;
   }
   char* d_bitmap = mem + sb->d_bitmap_ptr;
-  while (dblock > 8) {
+  while (dblock >= 8) {
     d_bitmap++;
     dblock -= 8;
   }
@@ -204,16 +206,18 @@ int get_addr_new_dblock() {
 
 int get_new_dblock() {
   int dblock = get_addr_new_dblock();
+  printf("NEW BLOCK: %d\n", dblock);
   if (dblock < 0) {
     return dblock;
   }
+  int od = dblock;
   char* d_bitmap = mem + sb->d_bitmap_ptr;
-  while (dblock > 8) {
+  while (dblock >= 8) {
     d_bitmap++;
     dblock -= 8;
   }
   *d_bitmap |= 1 << dblock;
-  return dblock * BLOCK_SIZE + sb->d_blocks_ptr;
+  return od * BLOCK_SIZE + sb->d_blocks_ptr;
 }
 
 char* get_dblock_content(int dblock) {
@@ -225,7 +229,7 @@ void free_block(int dblock) {
   memset(entry, 0, BLOCK_SIZE);
   int idx = (dblock - sb->d_blocks_ptr) / BLOCK_SIZE;
   char* d_bitmap = mem + sb->d_bitmap_ptr;
-  while (idx > 8) {
+  while (idx >= 8) {
     d_bitmap++;
     idx -= 8;
   }
@@ -249,7 +253,7 @@ void free_inode(struct wfs_inode* inode) {
   }
   int idx = inode->num;
   char* i_bitmap = mem + sb->i_bitmap_ptr;
-  while (idx > 8) {
+  while (idx >= 8) {
     i_bitmap++;
     idx -= 8;
   }
@@ -261,13 +265,14 @@ char get_byte_from_inode(struct wfs_inode* inode, int pos) {
   int offset = pos % BLOCK_SIZE;
   if (block <= D_BLOCK) {
     char* content = get_dblock_content(inode->blocks[block]);
-    printf("read ptr: %p %c\n", content + offset, content[offset]);
+    // printf("read ptr: %p %d\n", content + offset, (int)content[offset]);
     return content[offset];
   } else {
     int* ind_block = (int*)get_dblock_content(inode->blocks[IND_BLOCK]);
     block -= D_BLOCK + 1;
     int idx = ind_block[block];
     char* content = get_dblock_content(idx);
+    // printf("read ptr: %p %d\n", content + offset, (int)content[offset]);
     return content[offset];
   }
 }
@@ -285,10 +290,11 @@ int set_byte_to_inode(struct wfs_inode* inode, int pos, char byte) {
     }
     char* content = get_dblock_content(inode->blocks[block]);
     content[offset] = byte;
-    printf("write ptr: %p %c\n", content + offset, content[offset]);
+    // printf("write ptr: %p %d\n", content + offset, (int)content[offset]);
   } else {
     if (inode->blocks[IND_BLOCK] == 0) {
       int new_block = get_new_dblock();
+      printf("NEW IND BLOCK %d\n", new_block);
       if (new_block < 0) {
         return new_block;
       }
@@ -309,6 +315,7 @@ int set_byte_to_inode(struct wfs_inode* inode, int pos, char byte) {
     }
     char* content = get_dblock_content(idx);
     content[offset] = byte;
+    // printf("write ptr: %p %d\n", content + offset, (int)content[offset]);
   }
   return 0;
 }

@@ -103,7 +103,7 @@ int wfs_rmdir(const char* path) {
 }
 
 int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
-  printf("MKNOD %s\n", path);
+  printf("MKNOD %s -> %d\n", path, check_inode_bitmap(8));
   char* path_copy = strdup(path);
   char** tokens = parse_path(path_copy);
   int last = -1;
@@ -120,6 +120,7 @@ int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     return parent;
   }
   struct wfs_inode* inodes = get_inode_content(parent);
+  printf("AA: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %ld\n", (void*)inodes, inodes->size);
   // print_inode_stat(inodes);
 
   if (!(inodes->mode & S_IFDIR)) {
@@ -130,21 +131,34 @@ int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     return -EEXIST;
   }
 
+  printf("A2: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %ld\n", (void*)inodes, inodes->size);
   int new_inode = get_new_inode();
+  printf("INODE NUMBER %d\n", new_inode);
+
+  if (new_inode < 0) {
+    return new_inode;
+  }
   
+  printf("A3: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %ld\n", (void*)inodes, inodes->size);
   struct wfs_inode* new_inodes = get_inode_content(new_inode);
   new_inodes->mode = mode;
 
+  printf("A4: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %ld\n", (void*)inodes, inodes->size);
   struct wfs_dentry* new_dentry;
   int num = get_next_free_dentry(inodes, &new_dentry);
   if (num < 0) {
     return num;
   }
 
+  printf("BF: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %d %ld\n", (void*)inodes, num, inodes->size);
+  
   inodes->size += num;
   strcpy(new_dentry->name, name);
   new_dentry->num = new_inode;
-  
+
+  // if (num != 0) {
+    printf("EE: FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF %p %d %ld\n", (void*)inodes, num, inodes->size);
+  // }
   return 0;
 }
 
@@ -168,20 +182,25 @@ int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse
 }
 
 int wfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi) {
-  printf("WRITE %s\n", path);
+  printf("WRITE %s %ld %ld\n", path, size, offset);
   int inode = get_inode(path);
   if (inode < 0) {
+    printf("FUCK %d\n", inode);
     return inode;
   }
 
   struct wfs_inode* inodes = get_inode_content(inode);
   
+  printf("INODE SIZE %ld\n", inodes->size);
   if (offset > inodes->size) {
     return 0;
   }
 
   for (int i = 0; i < size; ++i) {
-    set_byte_to_inode(inodes, offset + i, buf[i]);
+    int status = set_byte_to_inode(inodes, offset + i, buf[i]);
+    if (status != 0) {
+      return status;
+    }
     if (offset + i >= inodes->size) {
       inodes->size = offset + i + 1;
     }
@@ -207,29 +226,54 @@ int wfs_unlink(const char* path) {
   if (del_inode->mode & S_IFDIR) {
     return -EISDIR;
   }
-  for (int i = 0; i <= D_BLOCK; ++i) {
-    if (inodes->blocks[i] == 0) {
-      continue;
-    }
-    struct wfs_dentry* entry = get_dentry(inodes->blocks[i]);
-    if (strcmp(entry->name, name) == 0) {
-      free_block(inodes->blocks[i]);
-      inodes->blocks[i] = 0;
-      inodes->size -= BLOCK_SIZE;
 
-      del_inode->nlinks--;
-      if (del_inode->nlinks == 0) {
-        free_inode(del_inode);
-      }
-      return 0;
-    }
+  struct wfs_dentry* dentry;
+  if (get_dentry_from_inode(inodes, name, &dentry) < 0) {
+    return -ENOENT;
   }
-  return 1;
+  dentry->num = 0;
+
+  free_inode(del_inode);
+  return 0;
 }
 
-// int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi) {
+int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi) {
+  printf("READDIR %s %ld\n", path, offset);
+  int inode = get_inode(path);
+  if (inode < 0) {
+    return inode;
+  }
+  struct wfs_inode* inodes = get_inode_content(inode);
+  printf("%d %ld\n", inode, inodes->size); 
+  if (!(inodes->mode & S_IFDIR)) {
+    return 0;
+  }
+  while (1) {
+    printf("IN LOOP\n");
+    if (offset >= inodes->size) 
+      break;
 
-// }
+    printf("IN LOOP2\n");
+    int block_num = offset / BLOCK_SIZE;
+    int block_offset = (offset % BLOCK_SIZE) / sizeof(struct wfs_dentry);
+
+    offset += sizeof(struct wfs_dentry); 
+    struct wfs_dentry* dentry = get_dentry(inodes->blocks[block_num]);
+
+    if (dentry[block_offset].num == 0) {
+      printf("CONTINUE\n");
+      continue;
+    }
+
+    printf("FOUND: %s\n", dentry[block_offset].name);
+    int val = filler(buf, dentry[block_offset].name, NULL, offset);
+    if (val) {
+      offset -= sizeof(struct wfs_dentry); 
+      break;
+    }
+  }
+  return 0;
+}
 
 static struct fuse_operations ops = {
   .getattr = wfs_getattr,
@@ -239,7 +283,7 @@ static struct fuse_operations ops = {
   .rmdir   = wfs_rmdir,
   .read    = wfs_read,
   .write   = wfs_write,
-  // .readdir = wfs_readdir,
+  .readdir = wfs_readdir,
 };
 
 int main(int argc, char *argv[]) {
