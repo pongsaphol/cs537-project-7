@@ -84,22 +84,30 @@ int wfs_rmdir(const char* path) {
   if (!(del_inode->mode & S_IFDIR)) {
     return -ENOTDIR;
   }
-  if (del_inode->size != 0) {
-    return -ENOTEMPTY;
+
+  struct wfs_dentry* dentry;
+  if (get_dentry_from_inode(inodes, name, &dentry) < 0) {
+    return -ENOENT;
   }
-  for (int i = 0; i <= D_BLOCK; ++i) {
-    if (inodes->blocks[i] == 0) {
-      continue;
-    }
-    struct wfs_dentry* entry = get_dentry(inodes->blocks[i]);
-    if (strcmp(entry->name, name) == 0) {
-      free_block(inodes->blocks[i]);
-      inodes->blocks[i] = 0;
-      inodes->size -= BLOCK_SIZE;
-      return 0;
-    }
-  }
-  return 1;
+  dentry->num = 0;
+  free_inode(del_inode);
+  return 0;
+  // if (del_inode->size != 0) {
+  //   return -ENOTEMPTY;
+  // }
+  // for (int i = 0; i <= D_BLOCK; ++i) {
+  //   if (inodes->blocks[i] == 0) {
+  //     continue;
+  //   }
+  //   struct wfs_dentry* entry = get_dentry(inodes->blocks[i]);
+  //   if (strcmp(entry->name, name) == 0) {
+  //     free_block(inodes->blocks[i]);
+  //     inodes->blocks[i] = 0;
+  //     inodes->size -= BLOCK_SIZE;
+  //     return 0;
+  //   }
+  // }
+  // return 1;
 }
 
 int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
