@@ -7,6 +7,7 @@ struct wfs_sb* sb;
 
 static int wfs_getattr(const char *path, struct stat *stbuf) {
   printf("GETATTR %s\n", path);
+  printf("%d\n", (int) sizeof(struct wfs_dentry));
   int inode = get_inode(path);
   if (inode < 0) {
     return inode;
@@ -41,45 +42,26 @@ static int wfs_mkdir(const char* path, mode_t mode) {
   }
   struct wfs_inode* inodes = get_inode_content(parent);
 
-
-  int num_free = -1;
-  // check duplicate
-  for (int i = 0; i <= D_BLOCK; ++i) {
-    if (inodes->blocks[i] == 0) {
-      if (num_free == -1) {
-        num_free = i;
-      }
-      continue;
-    }
-    struct wfs_dentry* entry = get_dentry(inodes->blocks[i]);
-    if (strcmp(entry->name, name) == 0) {
-      return -EEXIST;
-    }
-  }
-
-
-  // not enough space
-  if (num_free == -1) {
-    return -ENOSPC;
+  if (check_duplicate(inodes, name) < 0) {
+    return -EEXIST;
   }
 
   int new_inode = get_new_inode();
-  if (new_inode < 0) {
-    return new_inode;
-  }
   struct wfs_inode* new_inodes = get_inode_content(new_inode);
   new_inodes->mode = S_IFDIR | mode;
-  int new_dentry_block = get_new_dblock();
-  if (new_dentry_block < 0) {
-    return new_dentry_block;
+
+  struct wfs_dentry* new_dentry;
+
+  int num = get_next_free_dentry(inodes, &new_dentry);
+  if (num < 0) {
+    return num;
   }
 
-  inodes->blocks[num_free] = new_dentry_block;
-  struct wfs_dentry* new_dentry = get_dentry(inodes->blocks[num_free]);
+  inodes->size += num;
+
   strcpy(new_dentry->name, name);
   new_dentry->num = new_inode;
 
-  inodes->size += BLOCK_SIZE;
   return 0;
 }
 

@@ -86,23 +86,35 @@ struct wfs_dentry* get_dentry(int pos) {
   return dentry;
 }
 
+int get_dentry_from_inode(struct wfs_inode* inode, char* name, struct wfs_dentry** entry) {
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if (inode->blocks[i] != 0) {
+      char* st = (char*)get_dentry(inode->blocks[i]);
+      for (struct wfs_dentry* dentry = get_dentry(inode->blocks[i]); (off_t)dentry < ((off_t)st + BLOCK_SIZE); dentry++) {
+        if (strcmp(dentry->name, name) == 0) {
+          *entry = dentry;
+          return 0;
+        }
+      }
+    }
+  }
+  return -ENOENT;
+}
+
 int get_inode_rec(char** path, int inode) {
   if (path[0] == NULL) {
     return inode;
   }
   struct wfs_inode* inodes = (struct wfs_inode*)(mem + sb->i_blocks_ptr + inode * BLOCK_SIZE);
   if (inodes->mode & S_IFDIR) {
-    for (int i = 0; i <= D_BLOCK; i++) {
-      if (inodes->blocks[i] != 0) {
-        struct wfs_dentry* dentry = get_dentry(inodes->blocks[i]);
-        if (strcmp(dentry->name, path[0]) == 0) {
-          return get_inode_rec(path + 1, dentry->num);
-        } 
-      }
+    struct wfs_dentry* entry;
+    if (get_dentry_from_inode(inodes, path[0], &entry) == 0) {
+      return get_inode_rec(path + 1, entry->num);
     }
   }
   return -ENOENT;
 }
+
 
 int get_inode(const char* path) {
   char* path_copy = strdup(path);
@@ -295,4 +307,39 @@ int set_byte_to_inode(struct wfs_inode* inode, int pos, char byte) {
     content[offset] = byte;
   }
   return 0;
+}
+
+
+int check_duplicate(struct wfs_inode* inode, char* name) {
+  struct wfs_dentry* entry;
+  if (get_dentry_from_inode(inode, name, &entry) == 0) {
+    return -EEXIST;
+  }
+  return 0;
+}
+
+int get_next_free_dentry(struct wfs_inode* inode, struct wfs_dentry** entry) {
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if (inode->blocks[i] != 0) {
+      char* st = (char*)get_dentry(inode->blocks[i]);
+      for (struct wfs_dentry* dentry = get_dentry(inode->blocks[i]); (off_t)dentry < ((off_t)st + BLOCK_SIZE); dentry++) {
+        if (dentry->num == 0) {
+          *entry = dentry;
+          return 0;
+        }
+      }
+    }
+  }
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if (inode->blocks[i] == 0) {
+      int new_block = get_new_dblock();
+      if (new_block < 0) {
+        return new_block;
+      }
+      inode->blocks[i] = new_block;
+      *entry = get_dentry(new_block);
+      return BLOCK_SIZE;
+    }
+  }
+  return -ENOSPC;
 }
