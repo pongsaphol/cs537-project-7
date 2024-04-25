@@ -1,6 +1,0 @@
-{
-  "files.associations": {
-    "*.mdx": "markdown",
-    "fuse.h": "c"
-  }
-}
